@@ -2,8 +2,25 @@ use super::state::{Modifier, RoomKind, RunState};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
 pub fn room_kind_for(state: &RunState) -> RoomKind {
-    if state.room == state.rooms_per_floor {
-        RoomKind::Boss
+    if state.floor == 3 {
+        match state.room {
+            1 => RoomKind::DepthTransition,
+            2 => RoomKind::DepthArena,
+            _ => RoomKind::DepthBoss,
+        }
+    } else if state.floor > 3 {
+        if state.room == state.rooms_per_floor {
+            RoomKind::DepthBoss
+        } else {
+            RoomKind::DepthArena
+        }
+    } else if state.room == state.rooms_per_floor {
+        // Skip boss on floor 1, spawn treasure instead
+        if state.floor == 1 {
+            RoomKind::Treasure
+        } else {
+            RoomKind::Boss
+        }
     } else if state.room == 2 {
         let mut rng = StdRng::seed_from_u64(state.room_seed ^ state.floor as u64);
         if rng.gen_bool(0.55) {

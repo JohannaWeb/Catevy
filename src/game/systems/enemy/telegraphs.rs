@@ -14,7 +14,7 @@ pub fn update_telegraphs(
             continue;
         }
         let frac = telegraph.life.fraction_remaining();
-        sprite.color = sprite.color.with_alpha(frac * 0.35);
+        sprite.color = sprite.color.with_alpha(frac * 0.5);
     }
 }
 
@@ -27,28 +27,78 @@ pub fn spawn_telegraph(
     windup_duration: f32,
 ) {
     let (telegraph_kind, color) = match kind {
-        EnemyKind::Charger => (TelegraphKind::Line { dir, length: 320.0 }, Color::srgb(1.0, 0.6, 0.3)),
-        EnemyKind::Bomber => (TelegraphKind::Circle { radius: 120.0 }, Color::srgb(1.0, 0.4, 0.3)),
-        EnemyKind::Boss => (TelegraphKind::Cone { dir, angle: 0.5, reach: 460.0 }, Color::srgb(0.9, 0.3, 0.35)),
-        EnemyKind::Caster | EnemyKind::Seeker => (TelegraphKind::Cone { dir, angle: 0.3, reach: 320.0 }, Color::srgb(0.7, 0.5, 1.0)),
-        _ => (TelegraphKind::Line { dir, length: 60.0 }, Color::srgb(1.0, 0.5, 0.4)),
+        EnemyKind::Charger => (
+            TelegraphKind::Line { dir, length: 320.0 },
+            Color::srgb(1.0, 0.6, 0.3),
+        ),
+        EnemyKind::Bomber => (
+            TelegraphKind::Circle { radius: 120.0 },
+            Color::srgb(1.0, 0.4, 0.3),
+        ),
+        EnemyKind::Boss => (
+            TelegraphKind::Cone {
+                dir,
+                angle: 0.5,
+                reach: 520.0,
+            },
+            Color::srgb(0.9, 0.25, 0.3),
+        ),
+        EnemyKind::Caster | EnemyKind::Seeker => (
+            TelegraphKind::Cone {
+                dir,
+                angle: 0.3,
+                reach: 320.0,
+            },
+            Color::srgb(0.7, 0.5, 1.0),
+        ),
+        _ => (
+            TelegraphKind::Line { dir, length: 60.0 },
+            Color::srgb(1.0, 0.5, 0.4),
+        ),
     };
 
-    let size = match &telegraph_kind {
-        TelegraphKind::Line { length, .. } => Vec2::new(*length, 12.0),
-        TelegraphKind::Circle { radius } => Vec2::splat(radius * 2.0),
-        TelegraphKind::Cone { reach, .. } => Vec2::splat(*reach * 0.6),
+    let (size, offset) = match &telegraph_kind {
+        TelegraphKind::Line { dir, length } => {
+            let dir = normalized_or_x(*dir);
+            (Vec2::new(*length, 14.0), dir * *length * 0.5)
+        }
+        TelegraphKind::Circle { radius } => (Vec2::splat(radius * 2.0), Vec2::ZERO),
+        TelegraphKind::Cone { dir, angle, reach } => {
+            let dir = normalized_or_x(*dir);
+            (
+                Vec2::new(*reach, (*reach * *angle).max(80.0)),
+                dir * *reach * 0.5,
+            )
+        }
     };
 
     let rotation = match &telegraph_kind {
-        TelegraphKind::Line { dir, .. } | TelegraphKind::Cone { dir, .. } => Quat::from_rotation_z(dir.y.atan2(dir.x)),
+        TelegraphKind::Line { dir, .. } | TelegraphKind::Cone { dir, .. } => {
+            let dir = normalized_or_x(*dir);
+            Quat::from_rotation_z(dir.y.atan2(dir.x))
+        }
         TelegraphKind::Circle { .. } => Quat::IDENTITY,
     };
 
     commands.spawn((
-        art.image_sprite(&art.orb, size, color.with_alpha(0.35)),
-        Transform { translation: enemy_pos.extend(0.5), rotation, ..default() },
-        Telegraph { kind: telegraph_kind, life: Timer::from_seconds(windup_duration, TimerMode::Once) },
+        art.image_sprite(&art.orb, size, color.with_alpha(0.5)),
+        Transform {
+            translation: (enemy_pos + offset).extend(0.5),
+            rotation,
+            ..default()
+        },
+        Telegraph {
+            kind: telegraph_kind,
+            life: Timer::from_seconds(windup_duration, TimerMode::Once),
+        },
         RoomEntity,
     ));
+}
+
+fn normalized_or_x(dir: Vec2) -> Vec2 {
+    if dir.length_squared() > 0.0 {
+        dir.normalize()
+    } else {
+        Vec2::X
+    }
 }

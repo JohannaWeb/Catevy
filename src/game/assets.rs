@@ -97,12 +97,73 @@ impl GameArt {
     /// The monster sheet to use for an enemy kind, if it is a monster (not a cat).
     pub fn monster_for(&self, kind: EnemyKind) -> Option<&MonsterArt> {
         Some(match kind {
+            // Goblin family (small fast enemies)
             EnemyKind::Bomber => &self.goblin,
+            EnemyKind::Kitten => &self.goblin,
+
+            // Skeleton family (charging/aggressive enemies)
             EnemyKind::Charger => &self.skeleton,
+            EnemyKind::Hunter => &self.skeleton,
+            EnemyKind::Scratcher => &self.skeleton,
+
+            // Flying Eye family (ranged/magic enemies)
             EnemyKind::Caster => &self.flying_eye,
+            EnemyKind::Seeker => &self.flying_eye,
+            EnemyKind::ShadowCat => &self.flying_eye,
+            EnemyKind::FlyingCat => &self.flying_eye,
+
+            // Mushroom family (tanky/special enemies)
             EnemyKind::Summoner => &self.mushroom,
-            _ => return None,
+            EnemyKind::Bruiser => &self.mushroom,
+            EnemyKind::Chonker => &self.mushroom,
+            EnemyKind::Goliath => &self.mushroom,
+            EnemyKind::NecromancerCat => &self.mushroom,
+            EnemyKind::ShieldBearer => &self.mushroom,
+
+            // Splitter and MimicChest use cat sprites
+            EnemyKind::Splitter => return None,
+            EnemyKind::MimicChest => return None,
+
+            // Boss has its own sprite
+            EnemyKind::Boss => return None,
         })
+    }
+
+    /// Get the tint color for an enemy type
+    pub fn enemy_color(kind: EnemyKind) -> Color {
+        match kind {
+            // Goblin family - greens and yellows
+            EnemyKind::Bomber => Color::srgb(1.0, 0.4, 0.3),
+            EnemyKind::Kitten => Color::srgb(0.8, 0.6, 0.4),
+
+            // Skeleton family - whites and grays
+            EnemyKind::Charger => Color::srgb(0.9, 0.9, 1.0),
+            EnemyKind::Hunter => Color::srgb(0.7, 0.7, 0.8),
+            EnemyKind::Scratcher => Color::srgb(0.85, 0.75, 0.7),
+
+            // Flying Eye family - purples and blues
+            EnemyKind::Caster => Color::srgb(0.7, 0.5, 1.0),
+            EnemyKind::Seeker => Color::srgb(0.5, 0.6, 1.0),
+            EnemyKind::ShadowCat => Color::srgb(0.3, 0.2, 0.4),
+            EnemyKind::FlyingCat => Color::srgb(0.6, 0.8, 1.0),
+
+            // Mushroom family - earth tones
+            EnemyKind::Summoner => Color::srgb(0.7, 0.5, 0.3),
+            EnemyKind::Bruiser => Color::srgb(0.8, 0.6, 0.4),
+            EnemyKind::Chonker => Color::srgb(0.9, 0.7, 0.5),
+            EnemyKind::Goliath => Color::srgb(0.6, 0.4, 0.3),
+            EnemyKind::NecromancerCat => Color::srgb(0.5, 0.3, 0.6),
+            EnemyKind::ShieldBearer => Color::srgb(0.5, 0.5, 0.6),
+
+            // Splitter family - cats
+            EnemyKind::Splitter => Color::srgb(0.6, 0.7, 0.6),
+
+            // Mimic
+            EnemyKind::MimicChest => Color::srgb(0.9, 0.7, 0.3),
+
+            // Boss
+            EnemyKind::Boss => Color::srgb(1.0, 0.4, 0.35),
+        }
     }
 
     /// A Meow-Knight sprite from the player sheet. `scale` multiplies the 34x25 cell.

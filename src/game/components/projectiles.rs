@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use crate::game::ability::Ability;
+use bevy::prelude::*;
 
 /// A projectile that moves and damages entities.
 #[derive(Component)]
@@ -30,6 +30,7 @@ pub enum PickupKind {
     MaxHpUp(i32),
     SwordDrop(usize),
     AbilityDrop(Ability),
+    Currency(u32), // NEW: Currency pickup for shop
 }
 
 /// An expanding blast (purely visual; damage applied when spawned).

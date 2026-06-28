@@ -2,8 +2,11 @@ use crate::game::assets::{GameArt, Sfx};
 use crate::game::components::*;
 use crate::game::spawning::{spawn_enemy_kind, spawn_gem_reward};
 use crate::game::state::{Phase, RunState, ScreenShake};
+use crate::game::systems::effects::spawn_combo_burst;
+use crate::game::systems::room::ComboState;
 use bevy::prelude::*;
 
+use super::{reset_hurt_invuln, spawn_damage_number_colored};
 use crate::game::systems::player::{play, spawn_poof};
 
 #[allow(clippy::too_many_arguments)]
@@ -14,16 +17,23 @@ pub fn resolve_enemy_deaths(
     mut run: ResMut<RunState>,
     mut shake: ResMut<ScreenShake>,
     mut hitstop: ResMut<HitStop>,
-    player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
+    mut combo_state: ResMut<ComboState>,
+    player_query: Query<(Entity, &Transform), (With<Player>, Without<Enemy>)>,
     enemies: Query<(Entity, &Transform, &Enemy)>,
 ) {
-    let player_pos = player_query.single().map(|t| t.translation.truncate()).unwrap_or(Vec2::ZERO);
+    let player_snapshot = player_query
+        .single()
+        .map(|(entity, transform)| (entity, transform.translation.truncate()))
+        .ok();
+    let player_pos = player_snapshot.map(|(_, pos)| pos).unwrap_or(Vec2::ZERO);
     let mut player_hp = run.player_hp;
-    let invuln = !run.invuln.is_finished();
+    let mut invuln = !run.invuln.is_finished();
     let mut kills_this_frame = 0u32;
 
     for (entity, transform, enemy) in &enemies {
-        if enemy.hp > 0 { continue; }
+        if enemy.hp > 0 {
+            continue;
+        }
         kills_this_frame += 1;
         let pos = transform.translation.truncate();
         spawn_poof(&mut commands, &art, pos);
@@ -37,11 +47,33 @@ pub fn resolve_enemy_deaths(
         if enemy.splits {
             for i in 0..2 {
                 let off = Vec2::new(if i == 0 { 32.0 } else { -32.0 }, 0.0);
-                spawn_enemy_kind(&mut commands, &art, EnemyKind::Kitten, run.floor, pos + off, false);
+                spawn_enemy_kind(
+                    &mut commands,
+                    &art,
+                    EnemyKind::Kitten,
+                    run.floor,
+                    pos + off,
+                    false,
+                );
             }
         }
         if enemy.explodes {
-            explode(&mut commands, &art, pos, enemy.damage + 2, 120.0, player_pos, &mut player_hp, &mut shake, invuln);
+            let before_hp = player_hp;
+            explode(
+                &mut commands,
+                &art,
+                pos,
+                enemy.damage + 2,
+                120.0,
+                player_pos,
+                &mut player_hp,
+                &mut shake,
+                invuln,
+            );
+            if player_hp < before_hp {
+                invuln = true;
+                reset_hurt_invuln(&mut run.invuln);
+            }
             play(&mut commands, &sfx.explosion, 0.6);
         }
         commands.entity(entity).despawn();
@@ -51,10 +83,38 @@ pub fn resolve_enemy_deaths(
         run.combo_count += kills_this_frame;
         run.combo_timer.reset();
         run.best_combo = run.best_combo.max(run.combo_count);
+
+        // Spawn combo burst effect at milestones
+        if run.combo_count > 0 && run.combo_count % 5 == 0 {
+            if combo_state.last_milestone < run.combo_count {
+                combo_state.last_milestone = run.combo_count;
+                spawn_combo_burst(&mut commands, &art, player_pos, run.combo_count);
+                // Play combo sound (use existing hit sound with higher pitch)
+                play(&mut commands, &sfx.hit, 0.6);
+            }
+        }
     }
 
-    run.player_hp = player_hp.clamp(0, run.player_max_hp);
-    if run.player_hp == 0 { run.phase = Phase::GameOver; }
+    let clamped = player_hp.clamp(0, run.player_max_hp);
+    if clamped < run.player_hp {
+        let damage_taken = run.player_hp - clamped;
+        if let Some((player_entity, pos)) = player_snapshot {
+            commands.entity(player_entity).insert(HitFlash::new());
+            spawn_damage_number_colored(
+                &mut commands,
+                &art.font,
+                pos + Vec2::new(0.0, 34.0),
+                damage_taken,
+                Color::srgb(1.0, 0.35, 0.32),
+            );
+        }
+        play(&mut commands, &sfx.hurt, 0.5);
+        hitstop.0 = hitstop.0.max(0.06);
+    }
+    run.player_hp = clamped;
+    if run.player_hp == 0 {
+        run.phase = Phase::GameOver;
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -74,9 +134,16 @@ pub fn explode(
         shake.trauma = (shake.trauma + 0.6).min(1.0);
     }
     commands.spawn((
-        art.image_sprite(&art.orb, Vec2::splat(radius * 2.0), Color::srgb(1.0, 0.6, 0.3)),
+        art.image_sprite(
+            &art.orb,
+            Vec2::splat(radius * 2.0),
+            Color::srgb(1.0, 0.6, 0.3),
+        ),
         Transform::from_translation(pos.extend(3.6)).with_scale(Vec3::splat(0.25)),
-        Explosion { life: Timer::from_seconds(0.3, TimerMode::Once), max_scale: 1.0 },
+        Explosion {
+            life: Timer::from_seconds(0.3, TimerMode::Once),
+            max_scale: 1.0,
+        },
         RoomEntity,
     ));
 }

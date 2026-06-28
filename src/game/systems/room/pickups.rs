@@ -1,7 +1,7 @@
 use crate::game::ability::AbilitySlot;
 use crate::game::assets::{GameArt, Sfx};
 use crate::game::components::*;
-use crate::game::state::{Phase, RunState};
+use crate::game::state::{PersistentState, Phase, RunState};
 use crate::game::sword::SWORDS;
 use bevy::audio::{AudioSource, PlaybackSettings, Volume};
 use bevy::prelude::*;
@@ -11,19 +11,26 @@ use crate::game::systems::effects::spawn_pickup_pop;
 pub fn collect_pickups(
     mut commands: Commands,
     mut run: ResMut<RunState>,
+    mut persistent: ResMut<PersistentState>,
     art: Res<GameArt>,
     sfx: Res<Sfx>,
     player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
     pickups: Query<(Entity, &Transform, &Pickup)>,
 ) {
-    if run.phase == Phase::GameOver { return; }
+    if run.phase == Phase::GameOver {
+        return;
+    }
 
-    let Ok(player_transform) = player_query.single() else { return; };
+    let Ok(player_transform) = player_query.single() else {
+        return;
+    };
     let player_pos = player_transform.translation.truncate();
 
     for (entity, transform, pickup) in &pickups {
         let pos = transform.translation.truncate();
-        if player_pos.distance(pos) > 30.0 { continue; }
+        if player_pos.distance(pos) > 30.0 {
+            continue;
+        }
 
         match pickup.kind {
             PickupKind::Heal(amount) => {
@@ -50,6 +57,9 @@ pub fn collect_pickups(
                 } else {
                     run.abilities[2] = AbilitySlot::new(ability);
                 }
+            }
+            PickupKind::Currency(amount) => {
+                persistent.currency += amount;
             }
         }
         commands.entity(entity).despawn();

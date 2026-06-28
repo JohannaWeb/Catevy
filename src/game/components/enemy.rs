@@ -1,4 +1,7 @@
+use super::projectiles::PickupKind;
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::hash::Hash;
 
 /// Main enemy component with AI state and stats.
 #[derive(Component)]
@@ -33,7 +36,7 @@ pub enum EnemyState {
 }
 
 /// All enemy types in the game.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EnemyKind {
     Hunter,
     Bruiser,
@@ -48,6 +51,12 @@ pub enum EnemyKind {
     Scratcher,
     Chonker,
     ShadowCat,
+    // New enemy types
+    NecromancerCat, // Revives corpses as weaker enemies
+    ShieldBearer,   // Frontal shield, must flank
+    FlyingCat,      // Ignores obstacles
+    MimicChest,     // Disguises as pickup, ambushes player
+    Goliath,        // Grows when hit
 }
 
 /// Boss type determines special behaviors and phase transitions.
@@ -85,4 +94,53 @@ pub struct Bleed {
     pub damage: i32,
     pub tick_timer: Timer,
     pub remaining_ticks: u8,
+}
+
+/// NecromancerCat: Can revive nearby corpses as weaker enemies.
+#[derive(Component)]
+pub struct NecromancerCat {
+    pub revive_range: f32,
+    pub revive_timer: Timer,
+    pub max_revives: i32,
+}
+
+/// ShieldBearer: Frontal shield blocks damage from front cone.
+#[derive(Component)]
+pub struct ShieldBearer {
+    pub shield_angle: f32, // Cone angle (radians)
+}
+
+/// FlyingCat: Can fly over obstacles.
+#[derive(Component)]
+pub struct Flying;
+
+/// MimicChest: Disguised as pickup until player approaches.
+#[derive(Component)]
+pub struct MimicChest {
+    pub disguise_kind: PickupKind,
+    pub triggered: bool,
+    pub trigger_range: f32,
+}
+
+/// Goliath: Grows larger when damaged.
+#[derive(Component)]
+pub struct Goliath {
+    pub growth_per_hit: f32,
+    pub max_scale: f32,
+}
+
+/// Corpse: Marks position where enemy died, can be revived by NecromancerCat.
+#[derive(Component)]
+pub struct Corpse {
+    pub kind: EnemyKind,
+    pub floor: u32,
+    pub was_elite: bool,
+    pub despawn_timer: Timer,
+}
+
+/// Knockback: Visual squash/stretch animation during knockback.
+#[derive(Component)]
+pub struct Knockback {
+    pub duration: Timer,
+    pub direction: Vec2,
 }

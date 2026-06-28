@@ -1,7 +1,9 @@
 use crate::game::assets::GameArt;
 use crate::game::components::*;
 use crate::game::progression::advance_room;
-use crate::game::spawning::{despawn_room, spawn_door, spawn_room, spawn_sword_reward};
+use crate::game::spawning::{
+    despawn_room, spawn_door, spawn_gem_reward, spawn_room, spawn_sword_reward,
+};
 use crate::game::state::{PersistentState, Phase, RoomKind, RunState};
 use crate::game::sword::SWORDS;
 use bevy::prelude::*;
@@ -15,7 +17,9 @@ pub fn process_room_clear(
     enemies: Query<Entity, (With<Enemy>, Without<Player>)>,
     existing_door: Query<Entity, With<Door>>,
 ) {
-    if run.phase != Phase::Fighting || !enemies.is_empty() { return; }
+    if run.current_room.is_depth() || run.phase != Phase::Fighting || !enemies.is_empty() {
+        return;
+    }
 
     run.phase = Phase::RoomCleared;
     if existing_door.is_empty() {
@@ -23,6 +27,18 @@ pub fn process_room_clear(
         if run.current_room == RoomKind::Boss {
             let index = 1 + (run.floor as usize) % (SWORDS.len() - 1);
             spawn_sword_reward(&mut commands, &art, index);
+            spawn_gem_reward(
+                &mut commands,
+                &art,
+                Vec2::new(-120.0, 55.0),
+                run.floor * 3,
+            );
+            spawn_gem_reward(
+                &mut commands,
+                &art,
+                Vec2::new(120.0, 55.0),
+                run.floor * 3 + 2,
+            );
         }
     }
 }
@@ -32,11 +48,18 @@ pub fn door_interact(
     mut commands: Commands,
     mut run: ResMut<RunState>,
     art: Res<GameArt>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
     door_query: Query<(Entity, &Transform), With<Door>>,
     room_entities: Query<Entity, With<RoomEntity>>,
 ) {
-    if run.phase != Phase::RoomCleared || !keyboard.just_pressed(KeyCode::KeyE) { return; }
+    if run.current_room.is_depth()
+        || run.phase != Phase::RoomCleared
+        || !keyboard.just_pressed(KeyCode::KeyE)
+    {
+        return;
+    }
 
     let Ok(player_transform) = player_query.single() else { return; };
     let player_pos = player_transform.translation.truncate();
@@ -53,7 +76,7 @@ pub fn door_interact(
 
     despawn_room(&mut commands, &room_entities);
     advance_room(&mut run);
-    spawn_room(&mut commands, &art, &mut run);
+    spawn_room(&mut commands, &art, &mut meshes, &mut materials, &mut run);
 }
 
 pub fn restart_run(
@@ -62,6 +85,8 @@ pub fn restart_run(
     mut run: ResMut<RunState>,
     _persistent: Res<PersistentState>,
     art: Res<GameArt>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     room_entities: Query<Entity, With<RoomEntity>>,
     door_entities: Query<Entity, With<Door>>,
 ) {
@@ -73,7 +98,7 @@ pub fn restart_run(
     }
 
     *run = RunState::default();
-    spawn_room(&mut commands, &art, &mut run);
+    spawn_room(&mut commands, &art, &mut meshes, &mut materials, &mut run);
 }
 
 pub fn meta_progression_save(mut persistent: ResMut<PersistentState>, run: Res<RunState>) {

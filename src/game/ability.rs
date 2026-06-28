@@ -1,17 +1,18 @@
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Active skills the player triggers with a key. Dash is the starter; the rest
 /// are found in rooms and slotted onto Q / F.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Ability {
     Dash,
     Whirlwind,
     WarCry,
     Hairball,
     SecondWind,
-    Zoomies,   // Cat: 3x speed for 2s, afterimage trail
-    Purr,      // Cat: Charm nearby enemies 3s
-    CatNap,    // Cat: Heal 2 HP over 3s, immobile
+    Zoomies, // Cat: 3x speed for 2s, afterimage trail
+    Purr,    // Cat: Charm nearby enemies 3s
+    CatNap,  // Cat: Heal 2 HP over 3s, immobile
 }
 
 impl Ability {

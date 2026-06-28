@@ -1,9 +1,9 @@
 mod ai;
 mod attacks;
 mod behavior;
-mod telegraphs;
 mod synergies;
+mod telegraphs;
 
 pub use ai::enemy_ai;
-pub use telegraphs::update_telegraphs;
 pub use synergies::enemy_synergies;
+pub use telegraphs::update_telegraphs;

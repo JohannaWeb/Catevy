@@ -16,6 +16,19 @@ pub enum RoomKind {
     Rest,
     Treasure,
     Boss,
+    DepthTransition,
+    DepthArena,
+    DepthBoss,
+    // New room types
+    Shop,      // Spend currency on items/upgrades
+    Challenge, // Timed waves with rewards
+    Secret,    // Hidden behind destructible walls
+}
+
+impl RoomKind {
+    pub fn is_depth(self) -> bool {
+        matches!(self, Self::DepthTransition | Self::DepthArena | Self::DepthBoss)
+    }
 }
 
 /// Decaying camera shake intensity.

@@ -1,7 +1,9 @@
-mod movement;
-mod combat;
 mod abilities;
+mod combat;
+mod movement;
 
-pub use movement::{player_movement, dash_flicker};
-pub use combat::{player_swing, cursor_world, play, ARENA_HALF_WIDTH, ARENA_HALF_HEIGHT, DOOR_DISTANCE};
-pub use abilities::{use_abilities, rotate, spawn_poof};
+pub use abilities::{rotate, spawn_poof, use_abilities};
+pub use combat::{
+    ARENA_HALF_HEIGHT, ARENA_HALF_WIDTH, DOOR_DISTANCE, cursor_world, play, player_swing,
+};
+pub use movement::{LastMouseAim, dash_flicker, player_movement};

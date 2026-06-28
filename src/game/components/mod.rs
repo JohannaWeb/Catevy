@@ -1,13 +1,13 @@
-mod player;
-mod enemy;
-mod projectiles;
 mod effects;
+mod enemy;
+mod player;
+mod projectiles;
 
 // Re-export all public types
-pub use player::*;
-pub use enemy::*;
-pub use projectiles::*;
 pub use effects::*;
+pub use enemy::*;
+pub use player::*;
+pub use projectiles::*;
 
 use bevy::prelude::*;
 use std::time::Duration;
@@ -24,12 +24,113 @@ pub struct RoomEntity;
 #[derive(Component)]
 pub struct HudText;
 
+/// Persistent 2D camera marker.
+#[derive(Component)]
+pub struct Main2dCamera;
+
+/// Persistent 3D camera marker used by the depth prototype.
+#[derive(Component)]
+pub struct DepthCamera;
+
+/// Root node for the boss health bar UI.
+#[derive(Component)]
+pub struct BossHealthBarRoot;
+
+/// Fill node for the boss health bar UI.
+#[derive(Component)]
+pub struct BossHealthBarFill;
+
+/// Label text for the boss health bar UI.
+#[derive(Component)]
+pub struct BossHealthBarText;
+
+/// 3D player avatar used after the world unfolds.
+#[derive(Component)]
+pub struct DepthPlayer {
+    pub facing: Vec3,
+}
+
+/// 3D room boss/enemy prototype.
+#[derive(Component)]
+pub struct DepthBoss {
+    pub name: &'static str,
+    pub hp: i32,
+    pub max_hp: i32,
+    pub damage: i32,
+    pub speed: f32,
+    pub attack_timer: Timer,
+    pub final_boss: bool,
+}
+
+/// 3D projectile travelling on the floor plane.
+#[derive(Component)]
+pub struct DepthProjectile {
+    pub velocity: Vec3,
+    pub damage: i32,
+    pub lifetime: Timer,
+}
+
+/// Short 3D slash visual.
+#[derive(Component)]
+pub struct DepthSlash {
+    pub life: Timer,
+}
+
+/// Exit marker for 3D rooms.
+#[derive(Component)]
+pub struct DepthExit {
+    pub active: bool,
+}
+
 /// An obstacle that blocks movement and projectiles.
 #[derive(Component)]
 pub struct Obstacle {
     pub radius: f32,
     pub destructible: bool,
     pub hp: i32,
+}
+
+/// Shop room state with purchasable items.
+#[derive(Component)]
+pub struct ShopRoom {
+    pub items: Vec<ShopItem>,
+}
+
+pub struct ShopItem {
+    pub kind: ShopItemKind,
+    pub cost: u32,
+    pub purchased: bool,
+}
+
+#[derive(Clone)]
+pub enum ShopItemKind {
+    HealFull,
+    DamageUp(i32),
+    SpeedUp(i32),
+    MaxHpUp(i32),
+    Sword(usize),
+    Ability(crate::game::ability::Ability),
+    Reroll,
+}
+
+/// Challenge room with timed waves.
+#[derive(Component)]
+pub struct ChallengeRoom {
+    pub waves: Vec<ChallengeWave>,
+    pub current_wave: usize,
+    pub time_remaining: Timer,
+    pub rewards: Vec<projectiles::PickupKind>,
+}
+
+pub struct ChallengeWave {
+    pub enemies: Vec<(EnemyKind, bool)>, // (kind, elite)
+}
+
+/// Secret room hidden behind destructible walls.
+#[derive(Component)]
+pub struct SecretRoom {
+    pub rewards: Vec<projectiles::PickupKind>,
+    pub discovered: bool,
 }
 
 /// Drives sprite animation between idle/walk/attack clips.
@@ -56,7 +157,10 @@ impl CatAnimation {
             attack,
             moving: false,
             attacking: false,
-            frame_timer: Timer::new(Duration::from_secs_f32(1.0 / fps as f32), TimerMode::Repeating),
+            frame_timer: Timer::new(
+                Duration::from_secs_f32(1.0 / fps as f32),
+                TimerMode::Repeating,
+            ),
         }
     }
 

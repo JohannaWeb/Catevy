@@ -1,12 +1,13 @@
-use crate::game::ability::{Ability, ABILITY_KEYS};
-use crate::game::assets::GameArt;
+use crate::game::ability::{ABILITY_KEYS, Ability};
+use crate::game::assets::{GameArt, KNIGHT_IDLE};
 use crate::game::components::*;
 use crate::game::spawning::spawn_projectile;
 use crate::game::state::{RunState, ScreenShake};
+use crate::game::sword::SlashStyle;
 use bevy::prelude::*;
 use std::collections::HashSet;
 
-use super::combat::{play, ARENA_HALF_WIDTH, ARENA_HALF_HEIGHT};
+use super::combat::{ARENA_HALF_HEIGHT, ARENA_HALF_WIDTH, play};
 
 #[allow(clippy::too_many_arguments)]
 pub fn use_abilities(
@@ -27,9 +28,16 @@ pub fn use_abilities(
     for i in 0..slot_count {
         run.abilities[i].cd.tick(time.delta());
     }
-    if run.phase != crate::game::state::Phase::Fighting { return; }
+    if run.current_room.is_depth() {
+        return;
+    }
+    if run.phase != crate::game::state::Phase::Fighting {
+        return;
+    }
 
-    let Ok((mut player_transform, facing)) = player_query.single_mut() else { return; };
+    let Ok((mut player_transform, facing)) = player_query.single_mut() else {
+        return;
+    };
     let player_pos = player_transform.translation.truncate();
 
     let aim = super::combat::cursor_world(&windows, &camera_query)
@@ -39,29 +47,71 @@ pub fn use_abilities(
         .unwrap_or(facing.0);
 
     let mut move_dir = Vec2::ZERO;
-    if keyboard.pressed(KeyCode::KeyW) { move_dir.y += 1.0; }
-    if keyboard.pressed(KeyCode::KeyS) { move_dir.y -= 1.0; }
-    if keyboard.pressed(KeyCode::KeyA) { move_dir.x -= 1.0; }
-    if keyboard.pressed(KeyCode::KeyD) { move_dir.x += 1.0; }
-    let dash_dir = if move_dir.length_squared() > 0.0 { move_dir.normalize() } else { facing.0 };
+    if keyboard.pressed(KeyCode::KeyW) {
+        move_dir.y += 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyS) {
+        move_dir.y -= 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyA) {
+        move_dir.x -= 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyD) {
+        move_dir.x += 1.0;
+    }
+    let dash_dir = if move_dir.length_squared() > 0.0 {
+        move_dir.normalize()
+    } else {
+        facing.0
+    };
 
     let swing_damage = run.swing_damage();
     let max_hp = run.player_max_hp;
     let projectile_speed = run.projectile_speed;
 
     for i in 0..slot_count {
-        if !keyboard.just_pressed(ABILITY_KEYS[i]) || !run.abilities[i].cd.is_finished() { continue; }
+        if !keyboard.just_pressed(ABILITY_KEYS[i]) || !run.abilities[i].cd.is_finished() {
+            continue;
+        }
         let ability = run.abilities[i].ability;
         match ability {
             Ability::Dash => {
                 let target = player_pos + dash_dir * 150.0;
-                player_transform.translation.x = target.x.clamp(-ARENA_HALF_WIDTH, ARENA_HALF_WIDTH);
-                player_transform.translation.y = target.y.clamp(-ARENA_HALF_HEIGHT, ARENA_HALF_HEIGHT);
+                let clamped_target = Vec2::new(
+                    target.x.clamp(-ARENA_HALF_WIDTH, ARENA_HALF_WIDTH),
+                    target.y.clamp(-ARENA_HALF_HEIGHT, ARENA_HALF_HEIGHT),
+                );
+
+                // Spawn 5 afterimages along dash path
+                for i in 1..=5 {
+                    let t = i as f32 / 6.0;
+                    let afterimage_pos = player_pos.lerp(clamped_target, t);
+                    commands.spawn((
+                        art.knight_sprite(KNIGHT_IDLE.0, 3.4, Color::srgba(0.5, 0.9, 1.0, 0.6)),
+                        Transform::from_translation(afterimage_pos.extend(2.5)),
+                        Afterimage {
+                            life: Timer::from_seconds(0.15, TimerMode::Once),
+                        },
+                        RoomEntity,
+                    ));
+                }
+
+                player_transform.translation.x = clamped_target.x;
+                player_transform.translation.y = clamped_target.y;
                 run.invuln = Timer::from_seconds(0.3, TimerMode::Once);
                 spawn_poof(&mut commands, &art, player_pos);
             }
             Ability::Whirlwind => {
-                spawn_aoe_slash(&mut commands, &art, player_pos, std::f32::consts::PI, 150.0, swing_damage + 2, 160.0, ability.color());
+                spawn_aoe_slash(
+                    &mut commands,
+                    &art,
+                    player_pos,
+                    std::f32::consts::PI,
+                    150.0,
+                    swing_damage + 2,
+                    160.0,
+                    ability.color(),
+                );
             }
             Ability::WarCry => {
                 for mut enemy_transform in &mut enemies {
@@ -69,8 +119,10 @@ pub fn use_abilities(
                     let dist = to.length();
                     if dist > 0.1 && dist < 230.0 {
                         let push = to / dist * 170.0;
-                        enemy_transform.translation.x = (enemy_transform.translation.x + push.x).clamp(-ARENA_HALF_WIDTH, ARENA_HALF_WIDTH);
-                        enemy_transform.translation.y = (enemy_transform.translation.y + push.y).clamp(-ARENA_HALF_HEIGHT, ARENA_HALF_HEIGHT);
+                        enemy_transform.translation.x = (enemy_transform.translation.x + push.x)
+                            .clamp(-ARENA_HALF_WIDTH, ARENA_HALF_WIDTH);
+                        enemy_transform.translation.y = (enemy_transform.translation.y + push.y)
+                            .clamp(-ARENA_HALF_HEIGHT, ARENA_HALF_HEIGHT);
                     }
                 }
                 run.invuln = Timer::from_seconds(0.6, TimerMode::Once);
@@ -81,7 +133,14 @@ pub fn use_abilities(
                 for k in 0..5 {
                     let a = (k as f32 - 2.0) * 0.18;
                     let dir = rotate(aim, a);
-                    spawn_projectile(&mut commands, &art, player_pos + dir * 26.0, dir * projectile_speed, ProjectileOwner::Player, swing_damage);
+                    spawn_projectile(
+                        &mut commands,
+                        &art,
+                        player_pos + dir * 26.0,
+                        dir * projectile_speed,
+                        ProjectileOwner::Player,
+                        swing_damage,
+                    );
                 }
             }
             Ability::SecondWind => {
@@ -100,8 +159,10 @@ pub fn use_abilities(
                     if player_pos.distance(enemy_pos) < 150.0 {
                         let to = enemy_pos - player_pos;
                         let push = to.normalize_or_zero() * 100.0;
-                        enemy_transform.translation.x = (enemy_transform.translation.x + push.x).clamp(-ARENA_HALF_WIDTH, ARENA_HALF_WIDTH);
-                        enemy_transform.translation.y = (enemy_transform.translation.y + push.y).clamp(-ARENA_HALF_HEIGHT, ARENA_HALF_HEIGHT);
+                        enemy_transform.translation.x = (enemy_transform.translation.x + push.x)
+                            .clamp(-ARENA_HALF_WIDTH, ARENA_HALF_WIDTH);
+                        enemy_transform.translation.y = (enemy_transform.translation.y + push.y)
+                            .clamp(-ARENA_HALF_HEIGHT, ARENA_HALF_HEIGHT);
                     }
                 }
                 spawn_ring(&mut commands, &art, player_pos, 150.0, ability.color());
@@ -130,15 +191,31 @@ pub fn rotate(v: Vec2, radians: f32) -> Vec2 {
 }
 
 /// A 360°-ish damaging shockwave (used by Whirlwind), drawn as a fading disc.
-pub fn spawn_aoe_slash(commands: &mut Commands, art: &GameArt, origin: Vec2, arc: f32, reach: f32, damage: i32, knockback: f32, color: Color) {
+pub fn spawn_aoe_slash(
+    commands: &mut Commands,
+    art: &GameArt,
+    origin: Vec2,
+    arc: f32,
+    reach: f32,
+    damage: i32,
+    knockback: f32,
+    color: Color,
+) {
     commands.spawn((
         art.image_sprite(&art.orb, Vec2::splat(reach * 2.0), color),
         Transform::from_translation(origin.extend(3.2)),
         Slash {
-            damage, reach, arc, knockback, lifesteal: 0,
-            origin, dir: Vec2::X,
+            damage,
+            reach,
+            arc,
+            knockback,
+            lifesteal: 0,
+            origin,
+            dir: Vec2::X,
             life: Timer::from_seconds(0.22, TimerMode::Once),
             hit: HashSet::new(),
+            slash_style: SlashStyle::Standard,
+            is_crit: false,
         },
         RoomEntity,
     ));
@@ -149,7 +226,10 @@ pub fn spawn_ring(commands: &mut Commands, art: &GameArt, pos: Vec2, size: f32, 
     commands.spawn((
         art.image_sprite(&art.orb, Vec2::splat(size * 2.0), color.with_alpha(0.7)),
         Transform::from_translation(pos.extend(3.5)).with_scale(Vec3::splat(0.2)),
-        Explosion { life: Timer::from_seconds(0.3, TimerMode::Once), max_scale: 1.0 },
+        Explosion {
+            life: Timer::from_seconds(0.3, TimerMode::Once),
+            max_scale: 1.0,
+        },
         RoomEntity,
     ));
 }
@@ -164,7 +244,10 @@ pub fn spawn_poof(commands: &mut Commands, art: &GameArt, pos: Vec2) {
         commands.spawn((
             art.image_sprite(&art.orb, Vec2::splat(16.0), Color::srgb(0.95, 0.95, 1.0)),
             Transform::from_translation(pos.extend(3.5)),
-            Particle { velocity: dir * speed, life: Timer::from_seconds(0.34, TimerMode::Once) },
+            Particle {
+                velocity: dir * speed,
+                life: Timer::from_seconds(0.34, TimerMode::Once),
+            },
             RoomEntity,
         ));
     }

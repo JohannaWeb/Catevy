@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use std::collections::HashSet;
 
+use crate::game::sword::SlashStyle;
+
 /// Marker component for the player entity.
 #[derive(Component)]
 pub struct Player;
@@ -21,4 +23,6 @@ pub struct Slash {
     pub dir: Vec2,
     pub life: Timer,
     pub hit: HashSet<Entity>,
+    pub slash_style: SlashStyle,
+    pub is_crit: bool, // Whether this swing is a critical hit
 }
