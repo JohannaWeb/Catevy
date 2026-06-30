@@ -18,8 +18,8 @@ pub use combat::{
 // Depth prototype systems
 pub use depth::{
     debug_jump_to_depth, depth_boss_ai, depth_camera_follow, depth_exit_interact, depth_player_combat,
-    depth_player_movement, depth_room_progression, sync_dimension_view, update_depth_projectiles,
-    update_depth_slashes,
+    depth_player_movement, depth_room_progression, enter_2d_mode, enter_depth_mode, sync_game_mode,
+    update_depth_projectiles, update_depth_slashes,
 };
 
 // Enemy systems

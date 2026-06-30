@@ -8,7 +8,7 @@ mod sword;
 mod systems;
 
 use crate::game::components::{CombatDebug, HitStop};
-use crate::game::state::{GameState, PersistentState, RunState, ScreenShake};
+use crate::game::state::{GameMode, GameState, PersistentState, RunState, ScreenShake};
 use crate::game::systems::{LastMouseAim, ComboState};
 use bevy::prelude::*;
 
@@ -27,6 +27,7 @@ impl Plugin for GamePlugin {
             .init_resource::<LastMouseAim>()
             .init_resource::<ComboState>()
             .init_state::<GameState>()
+            .add_sub_state::<GameMode>()
             // Startup systems
             .add_systems(Startup, assets::setup_assets)
             .add_systems(Startup, spawning::setup_world.after(assets::setup_assets))
@@ -46,7 +47,7 @@ impl Plugin for GamePlugin {
                     systems::player_movement,
                     systems::player_swing,
                     systems::use_abilities,
-                    systems::sync_dimension_view,
+                    systems::sync_game_mode,
                     systems::dash_flicker,
                     systems::update_slashes,
                     systems::slash_hit_obstacles,
@@ -59,7 +60,7 @@ impl Plugin for GamePlugin {
                     systems::update_explosions,
                     systems::collect_pickups,
                     systems::shop_item_interact,
-                    systems::process_room_clear,
+                    systems::process_room_clear.before(systems::door_interact),
                     systems::door_interact,
                     systems::debug_jump_to_depth,
                 ).run_if(in_state(GameState::Playing)),
@@ -73,7 +74,7 @@ impl Plugin for GamePlugin {
                     systems::depth_boss_ai,
                     systems::update_depth_projectiles,
                     systems::update_depth_slashes,
-                    systems::depth_room_progression,
+                    systems::depth_room_progression.before(systems::depth_exit_interact),
                     systems::depth_exit_interact,
                 ).run_if(in_state(GameState::Playing)),
             )
@@ -125,6 +126,8 @@ impl Plugin for GamePlugin {
             // Cleanup transitions
             .add_systems(OnExit(GameState::MainMenu), systems::cleanup_main_menu)
             .add_systems(OnExit(GameState::Paused), systems::cleanup_pause_menu)
-            .add_systems(OnExit(GameState::GameOver), systems::cleanup_game_over);
+            .add_systems(OnExit(GameState::GameOver), systems::cleanup_game_over)
+            .add_systems(OnEnter(GameMode::TwoD), systems::enter_2d_mode)
+            .add_systems(OnEnter(GameMode::Depth), systems::enter_depth_mode);
     }
 }
