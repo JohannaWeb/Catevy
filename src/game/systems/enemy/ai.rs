@@ -1,7 +1,8 @@
 use crate::game::assets::{GameArt, Sfx};
 use crate::game::components::*;
-use crate::game::state::{Phase, RunState, ScreenShake};
+use crate::game::state::{GameState, Phase, RunState, ScreenShake};
 use bevy::prelude::*;
+use bevy::time::Real;
 
 use super::attacks::perform_attack;
 use super::behavior::{action_cooldown, chase_velocity, trigger_range, windup_time};
@@ -9,16 +10,18 @@ use super::telegraphs::spawn_telegraph;
 use crate::game::systems::combat::{
     PLAYER_HURT_RADIUS, reset_hurt_invuln, spawn_damage_number_colored,
 };
-use crate::game::systems::player::{ARENA_HALF_HEIGHT, ARENA_HALF_WIDTH, play, rotate};
+use crate::game::systems::player::{ARENA_HALF_HEIGHT, ARENA_HALF_WIDTH, play};
 
 const GOBLIN_KING_WINDUP_SECONDS: f32 = 0.55;
 
 #[allow(clippy::too_many_arguments)]
 pub fn enemy_ai(
     time: Res<Time>,
+    real_time: Res<Time<Real>>,
     mut run: ResMut<RunState>,
     mut shake: ResMut<ScreenShake>,
     mut hitstop: ResMut<HitStop>,
+    mut next_state: ResMut<NextState<GameState>>,
     art: Res<GameArt>,
     sfx: Res<Sfx>,
     player_query: Query<(Entity, &Transform), (With<Player>, Without<Enemy>)>,
@@ -75,8 +78,9 @@ pub fn enemy_ai(
             sprite.flip_x = offset.x < 0.0;
         }
 
-        enemy.action_cd.tick(time.delta());
-        enemy.state_timer.tick(time.delta());
+        // Use real time so hitstop (which zeros virtual time) can't freeze the state machine.
+        enemy.action_cd.tick(real_time.delta());
+        enemy.state_timer.tick(real_time.delta());
 
         let scale = if enemy.state == EnemyState::Windup {
             1.0 + 0.3 * enemy.state_timer.fraction()
@@ -133,7 +137,8 @@ pub fn enemy_ai(
                         enemy.state = EnemyState::Chase;
                         let cooldown = match boss_type {
                             Some(BossType::GoblinKing) => goblin_king_cooldown(&enemy),
-                            _ => 1.2, // Default cooldown for other bosses
+                            Some(BossType::Necromancer) => necromancer_cooldown(&enemy),
+                            _ => dragon_cooldown(&enemy),
                         };
                         enemy.action_cd = Timer::from_seconds(cooldown, TimerMode::Once);
                     }
@@ -191,15 +196,7 @@ pub fn enemy_ai(
                 let step = chase_velocity(enemy.kind, dir, distance) * enemy.speed * delta;
                 move_clamped(&mut transform, step);
 
-                let attack_range = if enemy.kind == EnemyKind::Boss
-                    && matches!(boss_type, Some(BossType::GoblinKing))
-                {
-                    760.0
-                } else {
-                    trigger_range(enemy.kind)
-                };
-
-                if distance <= attack_range && enemy.action_cd.is_finished() {
+                if distance <= trigger_range(enemy.kind) && enemy.action_cd.is_finished() {
                     enemy.charge_dir = dir;
                     enemy.state = EnemyState::Windup;
                     enemy.state_timer =
@@ -245,15 +242,18 @@ pub fn enemy_ai(
                         reset_hurt_invuln(&mut run.invuln);
                     }
                     anim.start_attack();
-                    let recover = if enemy.kind == EnemyKind::Charger {
+                    // Charger: set charge state here (perform_attack is empty for Charger).
+                    // Chonker: perform_attack already set state=Charge + charge_dir, just continue.
+                    if enemy.kind == EnemyKind::Charger {
                         enemy.state = EnemyState::Charge;
                         enemy.state_timer = Timer::from_seconds(0.45, TimerMode::Once);
                         continue;
-                    } else {
-                        0.5
-                    };
+                    }
+                    if enemy.kind == EnemyKind::Chonker {
+                        continue;
+                    }
                     enemy.state = EnemyState::Recover;
-                    enemy.state_timer = Timer::from_seconds(recover, TimerMode::Once);
+                    enemy.state_timer = Timer::from_seconds(0.5, TimerMode::Once);
                 }
             }
             EnemyState::Charge => {
@@ -309,7 +309,22 @@ pub fn enemy_ai(
     }
     run.player_hp = clamped;
     if run.player_hp == 0 {
-        run.phase = Phase::GameOver;
+        next_state.set(GameState::GameOver);
+    }
+}
+
+/// Tick state timers for enemies currently in knockback — excluded from enemy_ai by query
+/// filter, but their state machine must keep advancing so rapid hits can't freeze them.
+pub fn tick_knockback_enemy_timers(
+    real_time: Res<Time<Real>>,
+    mut enemies: Query<&mut Enemy, (With<Enemy>, Without<Player>, With<Knockback>)>,
+) {
+    for mut enemy in &mut enemies {
+        if enemy.hp <= 0 {
+            continue;
+        }
+        enemy.action_cd.tick(real_time.delta());
+        enemy.state_timer.tick(real_time.delta());
     }
 }
 
@@ -321,6 +336,28 @@ fn goblin_king_cooldown(enemy: &Enemy) -> f32 {
         1.3
     } else {
         1.1
+    }
+}
+
+fn necromancer_cooldown(enemy: &Enemy) -> f32 {
+    let hp_percent = enemy.hp as f32 / enemy.max_hp.max(1) as f32;
+    if hp_percent > 0.66 {
+        1.8 // Slower while summoning
+    } else if hp_percent > 0.33 {
+        1.3
+    } else {
+        0.9 // Fast projectile spam at low HP
+    }
+}
+
+fn dragon_cooldown(enemy: &Enemy) -> f32 {
+    let hp_percent = enemy.hp as f32 / enemy.max_hp.max(1) as f32;
+    if hp_percent > 0.66 {
+        1.4
+    } else if hp_percent > 0.33 {
+        1.1
+    } else {
+        0.8
     }
 }
 
@@ -336,49 +373,6 @@ fn goblin_king_movement(pos: Vec2, dir_to_player: Vec2, distance: f32, elapsed: 
     };
     let center_pull = Vec2::new(-pos.x / ARENA_HALF_WIDTH, -pos.y / ARENA_HALF_HEIGHT) * 0.35;
     (strafe + range + center_pull).normalize_or_zero() * 0.72
-}
-
-fn spawn_goblin_king_telegraphs(
-    commands: &mut Commands,
-    art: &GameArt,
-    pos: Vec2,
-    dir: Vec2,
-    enemy: &Enemy,
-    windup_duration: f32,
-) {
-    let dir = normalized_or_x(dir);
-    let hp_percent = enemy.hp as f32 / enemy.max_hp.max(1) as f32;
-    let angles: &[f32] = if hp_percent > 0.66 {
-        &[0.0]
-    } else if hp_percent > 0.33 {
-        &[-0.18, 0.18]
-    } else {
-        &[-0.25, 0.0, 0.25]
-    };
-
-    for angle in angles {
-        let lane_dir = rotate(dir, *angle);
-        commands.spawn((
-            art.image_sprite(
-                &art.orb,
-                Vec2::new(520.0, 16.0),
-                Color::srgba(1.0, 0.22, 0.28, 0.48),
-            ),
-            Transform {
-                translation: (pos + lane_dir * 260.0).extend(0.55),
-                rotation: Quat::from_rotation_z(lane_dir.y.atan2(lane_dir.x)),
-                ..default()
-            },
-            Telegraph {
-                kind: TelegraphKind::Line {
-                    dir: lane_dir,
-                    length: 520.0,
-                },
-                life: Timer::from_seconds(windup_duration, TimerMode::Once),
-            },
-            RoomEntity,
-        ));
-    }
 }
 
 fn normalized_or_x(dir: Vec2) -> Vec2 {

@@ -30,8 +30,6 @@ pub fn spawn_room(
         RoomKind::Rest
         | RoomKind::Treasure
         | RoomKind::Shop
-        | RoomKind::Challenge
-        | RoomKind::Secret
         | RoomKind::DepthTransition
         | RoomKind::DepthArena
         | RoomKind::DepthBoss => Phase::RoomCleared,
@@ -49,11 +47,7 @@ pub fn spawn_room(
         RoomKind::Boss => spawn_boss_room(commands, art, run),
         RoomKind::Rest => spawn_rest_room(commands, art, run, &mut rng),
         RoomKind::Treasure => spawn_treasure_room(commands, art, run, &mut rng),
-        // New room types - placeholder for now
-        RoomKind::Shop | RoomKind::Challenge | RoomKind::Secret => {
-            // Placeholder: spawn a rest room for now
-            spawn_rest_room(commands, art, run, &mut rng);
-        }
+        RoomKind::Shop => spawn_shop_room(commands, art, run, &mut rng),
         RoomKind::DepthTransition | RoomKind::DepthArena | RoomKind::DepthBoss => {}
     }
 
@@ -73,6 +67,13 @@ fn spawn_depth_room(
         RoomKind::DepthArena | RoomKind::DepthBoss => Phase::Fighting,
         _ => Phase::Fighting,
     };
+
+    commands.insert_resource(DepthCombatAssets {
+        slash_mesh: meshes.add(Cuboid::new(1.6, 0.08, 0.35)),
+        slash_material: materials.add(Color::srgb(1.0, 0.90, 0.40)),
+        projectile_mesh: meshes.add(Cuboid::new(0.28, 0.28, 0.28)),
+        projectile_material: materials.add(Color::srgb(1.0, 0.28, 0.34)),
+    });
 
     let floor_material = materials.add(Color::srgb(0.22, 0.19, 0.26));
     let wall_material = materials.add(Color::srgb(0.36, 0.28, 0.42));
@@ -188,8 +189,6 @@ fn spawn_room_banner(commands: &mut Commands, art: &GameArt, run: &RunState) {
         RoomKind::Rest => "Safe Room".to_string(),
         RoomKind::Treasure => "Treasure Room".to_string(),
         RoomKind::Shop => "Shop".to_string(),
-        RoomKind::Challenge => "Challenge Room".to_string(),
-        RoomKind::Secret => "Secret Room".to_string(),
         RoomKind::DepthTransition | RoomKind::DepthArena | RoomKind::DepthBoss => return,
     };
 
@@ -296,16 +295,30 @@ fn spawn_obstacles(commands: &mut Commands, art: &GameArt, run: &RunState, rng: 
             Color::srgb(0.45, 0.42, 0.48)
         };
 
-        commands.spawn((
-            art.image_sprite(&art.orb, Vec2::splat(radius * 2.0), color),
-            Transform::from_translation(Vec3::new(x, y, ACTOR_Z - 0.5)),
-            Obstacle {
-                radius,
-                destructible,
-                hp: if destructible { 2 } else { 999 },
-            },
-            RoomEntity,
-        ));
+        if destructible {
+            commands.spawn((
+                art.image_sprite(&art.orb, Vec2::splat(radius * 2.0), color),
+                Transform::from_translation(Vec3::new(x, y, ACTOR_Z - 0.5)),
+                Obstacle {
+                    radius,
+                    destructible: true,
+                    hp: 2,
+                },
+                DestructibleObstacle,
+                RoomEntity,
+            ));
+        } else {
+            commands.spawn((
+                art.image_sprite(&art.orb, Vec2::splat(radius * 2.0), color),
+                Transform::from_translation(Vec3::new(x, y, ACTOR_Z - 0.5)),
+                Obstacle {
+                    radius,
+                    destructible: false,
+                    hp: 999,
+                },
+                RoomEntity,
+            ));
+        }
     }
 }
 
@@ -678,6 +691,116 @@ fn spawn_rest_room(commands: &mut Commands, art: &GameArt, run: &RunState, rng: 
         let offset = Vec2::new(rng.gen_range(-220.0..220.0), rng.gen_range(-120.0..160.0));
         spawn_pickup(commands, art, PickupKind::Heal(2), offset, i as f32);
     }
+}
+
+fn spawn_shop_room(commands: &mut Commands, art: &GameArt, run: &RunState, rng: &mut StdRng) {
+    use crate::game::ability::FOUND_ABILITIES;
+    use crate::game::components::ShopItemMarker;
+
+    // Generate 3-4 shop items based on floor
+    let item_count = 3 + (run.floor % 2) as usize;
+    let base_cost = 8 + run.floor * 3; // Cost scales with floor
+
+    // Possible items with weights
+    let mut items: Vec<(ShopItemKind, u32)> = Vec::new();
+
+    // Always offer a heal
+    items.push((ShopItemKind::HealFull, base_cost / 2));
+
+    // Stat upgrades
+    items.push((ShopItemKind::DamageUp(1), base_cost));
+    items.push((ShopItemKind::SpeedUp(20), base_cost));
+    items.push((ShopItemKind::MaxHpUp(2), base_cost + 5));
+
+    // Sword (higher cost for better swords)
+    if run.floor > 1 {
+        let sword_idx = (run.floor as usize) % SWORDS.len().max(1);
+        items.push((ShopItemKind::Sword(sword_idx), base_cost + 10));
+    }
+
+    // Ability (random from found abilities)
+    if !FOUND_ABILITIES.is_empty() {
+        let ability_idx = rng.gen_range(0..FOUND_ABILITIES.len());
+        items.push((ShopItemKind::Ability(FOUND_ABILITIES[ability_idx]), base_cost + 8));
+    }
+
+    // Shuffle and pick items
+    for i in (0..items.len()).rev() {
+        let j = rng.gen_range(0..=i);
+        items.swap(i, j);
+    }
+
+    // Spawn shop items
+    let positions = [
+        Vec2::new(-180.0, 60.0),
+        Vec2::new(0.0, 80.0),
+        Vec2::new(180.0, 60.0),
+        Vec2::new(0.0, -20.0),
+    ];
+
+    let shop_items: Vec<(ShopItemKind, u32)> = items.into_iter().take(item_count).collect();
+
+    for (i, (kind, cost)) in shop_items.iter().enumerate() {
+        if i >= positions.len() { break; }
+        let pos = positions[i];
+        spawn_shop_item(commands, art, kind.clone(), *cost, pos, i as f32);
+    }
+
+    // Spawn room entity to track shop state
+    commands.spawn((
+        ShopRoom {
+            items: shop_items.into_iter().map(|(k, c)| ShopItem { kind: k, cost: c, purchased: false }).collect(),
+        },
+        RoomEntity,
+    ));
+}
+
+fn spawn_shop_item(
+    commands: &mut Commands,
+    art: &GameArt,
+    kind: ShopItemKind,
+    cost: u32,
+    pos: Vec2,
+    phase_offset: f32,
+) {
+    use crate::game::components::ShopItemMarker;
+
+    let (image, color, size) = match &kind {
+        ShopItemKind::HealFull => (&art.heart, Color::WHITE, 36.0),
+        ShopItemKind::DamageUp(_) => (&art.gem, Color::srgb(1.0, 0.52, 0.42), 36.0),
+        ShopItemKind::SpeedUp(_) => (&art.gem, Color::srgb(0.48, 0.74, 1.0), 36.0),
+        ShopItemKind::MaxHpUp(_) => (&art.gem, Color::srgb(1.0, 0.88, 0.36), 36.0),
+        ShopItemKind::Sword(idx) => (&art.swords[SWORDS[*idx].icon], Color::WHITE, 56.0),
+        ShopItemKind::Ability(ability) => (&art.orb, ability.color(), 42.0),
+        ShopItemKind::Reroll => (&art.orb, Color::srgb(0.7, 0.7, 0.8), 32.0),
+    };
+
+    commands
+        .spawn((
+            art.image_sprite(image, Vec2::splat(size), color),
+            Transform::from_translation(Vec3::new(pos.x, pos.y, 2.0)),
+            ShopItemMarker { kind, cost },
+            Bob {
+                base_y: pos.y,
+                amplitude: 7.0,
+                speed: 2.6,
+                phase: phase_offset * 1.3,
+            },
+            RoomEntity,
+        ))
+        .with_children(|parent| {
+            // Cost label
+            parent.spawn((
+                Text2d::new(format!("{}g", cost)),
+                TextFont {
+                    font: art.font.clone().into(),
+                    font_size: FontSize::Px(18.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(1.0, 0.85, 0.0)),
+                Transform::from_xyz(0.0, -size / 2.0 - 15.0, 0.1),
+            ));
+        });
 }
 
 fn spawn_treasure_room(commands: &mut Commands, art: &GameArt, run: &RunState, rng: &mut StdRng) {

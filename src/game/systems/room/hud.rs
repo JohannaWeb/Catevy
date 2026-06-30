@@ -1,6 +1,6 @@
 use crate::game::ability::{ABILITY_KEY_LABELS};
 use crate::game::components::*;
-use crate::game::state::RunState;
+use crate::game::state::{Phase, RunState};
 use bevy::prelude::*;
 
 /// Tracks the last combo milestone reached for visual feedback.
@@ -91,7 +91,7 @@ pub fn update_hud(game: Res<RunState>, mut query: Query<&mut Text, With<HudText>
     let Ok(mut text) = query.single_mut() else { return; };
     if game.current_room.is_depth() {
         text.0 = match game.phase {
-            crate::game::state::Phase::Fighting => format!(
+            Phase::Fighting => format!(
                 "Floor {} - Room {}/{}   ({:?})\nHP: {}/{}\n\nThe world has unfolded.\nMove: WASD\nSlash: hold left click\nDash/skills stay banked for 2D rooms",
                 game.floor,
                 game.room,
@@ -100,15 +100,9 @@ pub fn update_hud(game: Res<RunState>, mut query: Query<&mut Text, With<HudText>
                 game.player_hp,
                 game.player_max_hp,
             ),
-            crate::game::state::Phase::RoomCleared => format!(
+            Phase::RoomCleared => format!(
                 "The Depth Gate is open.\nRoom type: {:?}\n\nMove to the blue gate and press E.",
                 game.current_room,
-            ),
-            crate::game::state::Phase::GameOver => format!(
-                "The clan fell in the unfolded world.\nPress R to try again.\n\nHP: {}/{}\nBest combo: {}",
-                game.player_hp,
-                game.player_max_hp,
-                game.best_combo,
             ),
         };
         return;
@@ -125,7 +119,7 @@ pub fn update_hud(game: Res<RunState>, mut query: Query<&mut Text, With<HudText>
     }
 
     text.0 = match game.phase {
-        crate::game::state::Phase::Fighting => {
+        Phase::Fighting => {
             let combo_text = if game.combo_count > 2 {
                 format!("\nCOMBO x{}! (+{} dmg)", game.combo_count, game.combo_damage_bonus())
             } else { String::new() };
@@ -137,13 +131,9 @@ pub fn update_hud(game: Res<RunState>, mut query: Query<&mut Text, With<HudText>
                 skills, combo_text,
             )
         }
-        crate::game::state::Phase::RoomCleared => format!(
+        Phase::RoomCleared => format!(
             "Room cleared.\nRoom type: {:?}\n\nSword: {} ({})\n\nPress E at the door to continue.",
             game.current_room, game.sword.name, game.sword.quirk,
-        ),
-        crate::game::state::Phase::GameOver => format!(
-            "The clan fell on floor {}.\nPress R to try again.\n\nFinal sword: {}\nHP: {}/{}\nSwing damage: {}\nBest combo: {}",
-            game.floor, game.sword.name, game.player_hp, game.player_max_hp, game.swing_damage(), game.best_combo,
         ),
     };
 }

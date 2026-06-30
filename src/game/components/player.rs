@@ -23,6 +23,7 @@ pub struct Slash {
     pub dir: Vec2,
     pub life: Timer,
     pub hit: HashSet<Entity>,
+    pub hit_obstacles: HashSet<Entity>, // Track hit obstacles to avoid double-hit
     pub slash_style: SlashStyle,
     pub is_crit: bool, // Whether this swing is a critical hit
 }

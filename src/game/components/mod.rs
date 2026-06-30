@@ -90,12 +90,24 @@ pub struct Obstacle {
     pub hp: i32,
 }
 
+/// Marker for obstacles that can be destroyed.
+#[derive(Component)]
+pub struct DestructibleObstacle;
+
 /// Shop room state with purchasable items.
 #[derive(Component)]
 pub struct ShopRoom {
     pub items: Vec<ShopItem>,
 }
 
+/// Marker for a shop item entity that can be purchased.
+#[derive(Component)]
+pub struct ShopItemMarker {
+    pub kind: ShopItemKind,
+    pub cost: u32,
+}
+
+#[derive(Clone)]
 pub struct ShopItem {
     pub kind: ShopItemKind,
     pub cost: u32,
@@ -113,24 +125,15 @@ pub enum ShopItemKind {
     Reroll,
 }
 
-/// Challenge room with timed waves.
-#[derive(Component)]
-pub struct ChallengeRoom {
-    pub waves: Vec<ChallengeWave>,
-    pub current_wave: usize,
-    pub time_remaining: Timer,
-    pub rewards: Vec<projectiles::PickupKind>,
-}
-
-pub struct ChallengeWave {
-    pub enemies: Vec<(EnemyKind, bool)>, // (kind, elite)
-}
-
-/// Secret room hidden behind destructible walls.
-#[derive(Component)]
-pub struct SecretRoom {
-    pub rewards: Vec<projectiles::PickupKind>,
-    pub discovered: bool,
+/// Cached 3D mesh/material handles for depth-room combat spawns.
+/// Created once per depth room entry so projectile and slash spawns
+/// share handles instead of allocating new GPU assets each frame.
+#[derive(Resource)]
+pub struct DepthCombatAssets {
+    pub slash_mesh: Handle<Mesh>,
+    pub slash_material: Handle<StandardMaterial>,
+    pub projectile_mesh: Handle<Mesh>,
+    pub projectile_material: Handle<StandardMaterial>,
 }
 
 /// Drives sprite animation between idle/walk/attack clips.

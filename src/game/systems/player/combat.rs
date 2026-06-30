@@ -106,6 +106,7 @@ pub fn player_swing(
             dir: aim,
             life: Timer::from_seconds(0.18, TimerMode::Once),
             hit: HashSet::new(),
+            hit_obstacles: HashSet::new(),
             slash_style: sword.slash_style,
             is_crit,
         },

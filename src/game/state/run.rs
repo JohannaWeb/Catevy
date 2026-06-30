@@ -3,11 +3,31 @@ use crate::game::ability::{Ability, AbilitySlot};
 use crate::game::sword::Sword;
 use bevy::prelude::*;
 
+/// Main game state for menu/pause/game over screens.
+#[derive(Clone, Copy, PartialEq, Eq, Default, States, Debug, Hash)]
+pub enum GameState {
+    #[default]
+    MainMenu,
+    Playing,
+    Paused,
+    GameOver,
+}
+
+/// Which gameplay dimension is active. Only exists while `GameState::Playing`.
+#[derive(SubStates, Clone, Copy, PartialEq, Eq, Default, Debug, Hash)]
+#[source(GameState = GameState::Playing)]
+pub enum GameMode {
+    #[default]
+    TwoD,
+    Depth,
+}
+
+/// Room-level phase during gameplay.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     Fighting,
     RoomCleared,
-    GameOver,
+    // Note: GameOver moved to GameState
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -19,10 +39,7 @@ pub enum RoomKind {
     DepthTransition,
     DepthArena,
     DepthBoss,
-    // New room types
-    Shop,      // Spend currency on items/upgrades
-    Challenge, // Timed waves with rewards
-    Secret,    // Hidden behind destructible walls
+    Shop,
 }
 
 impl RoomKind {
@@ -94,9 +111,8 @@ impl RunState {
     }
 }
 
-impl Default for RunState {
-    fn default() -> Self {
-        let persistent = PersistentState::load();
+impl RunState {
+    pub fn new(persistent: &PersistentState) -> Self {
         let base_hp = 12 + persistent.starting_hp_bonus;
         let base_damage = persistent.starting_damage_bonus;
         let base_speed = 270.0 + persistent.starting_speed_bonus;
@@ -123,12 +139,18 @@ impl Default for RunState {
             sword,
             invuln,
             abilities: vec![AbilitySlot::new(Ability::Dash)],
-            room_seed: 0xCA5E_2024,
+            room_seed: rand::random::<u64>(),
             current_room: RoomKind::Combat,
             combo_count: 0,
             combo_timer,
             best_combo: 0,
             active_modifiers: Vec::new(),
         }
+    }
+}
+
+impl Default for RunState {
+    fn default() -> Self {
+        Self::new(&PersistentState::default())
     }
 }

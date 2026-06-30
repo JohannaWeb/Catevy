@@ -1,7 +1,7 @@
 use crate::game::assets::{GameArt, Sfx};
 use crate::game::components::*;
 use crate::game::spawning::{spawn_enemy_kind, spawn_gem_reward};
-use crate::game::state::{Phase, RunState, ScreenShake};
+use crate::game::state::{GameState, RunState, ScreenShake};
 use crate::game::systems::effects::spawn_combo_burst;
 use crate::game::systems::room::ComboState;
 use bevy::prelude::*;
@@ -18,6 +18,7 @@ pub fn resolve_enemy_deaths(
     mut shake: ResMut<ScreenShake>,
     mut hitstop: ResMut<HitStop>,
     mut combo_state: ResMut<ComboState>,
+    mut next_state: ResMut<NextState<GameState>>,
     player_query: Query<(Entity, &Transform), (With<Player>, Without<Enemy>)>,
     enemies: Query<(Entity, &Transform, &Enemy)>,
 ) {
@@ -113,7 +114,7 @@ pub fn resolve_enemy_deaths(
     }
     run.player_hp = clamped;
     if run.player_hp == 0 {
-        run.phase = Phase::GameOver;
+        next_state.set(GameState::GameOver);
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::game::assets::GameArt;
 use crate::game::components::*;
-use crate::game::state::{Phase, RunState};
+use crate::game::state::{GameState, RunState};
 use crate::game::systems::effects::spawn_dust_puff;
 use bevy::prelude::*;
 
@@ -20,6 +20,7 @@ pub struct DustTimer(pub Timer);
 pub fn player_movement(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
+    game_state: Res<State<GameState>>,
     run: Res<RunState>,
     art: Res<GameArt>,
     mut last_aim: ResMut<LastMouseAim>,
@@ -48,7 +49,7 @@ pub fn player_movement(
         return;
     }
 
-    if run.phase == Phase::GameOver {
+    if *game_state.get() == GameState::GameOver {
         anim.moving = false;
         return;
     }

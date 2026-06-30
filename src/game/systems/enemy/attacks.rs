@@ -81,7 +81,6 @@ pub fn perform_attack(
                             enemy.damage,
                         );
                     }
-                    enemy.action_cd = Timer::from_seconds(0.95, TimerMode::Once);
                 } else {
                     for a in [-0.25_f32, 0.0, 0.25] {
                         let d = rotate(dir, a);
@@ -94,48 +93,87 @@ pub fn perform_attack(
                             enemy.damage,
                         );
                     }
-                    enemy.action_cd = Timer::from_seconds(0.8, TimerMode::Once);
                 }
-            } else if hp_percent > 0.66 {
-                for a in [-0.2_f32, 0.2] {
-                    let d = rotate(dir, a);
+            } else if matches!(boss_type, Some(BossType::Necromancer)) {
+                // Phase 1: summon wave of minions
+                // Phase 2: summon one minion + fire projectiles
+                // Phase 3: full projectile spread (no more summons)
+                if hp_percent > 0.66 {
+                    if enemy.ammo > 0 {
+                        enemy.ammo -= 1;
+                        for k in 0..2 {
+                            let side = if k == 0 { 1.0 } else { -1.0 };
+                            spawn_enemy_kind(
+                                commands, art,
+                                EnemyKind::Kitten, floor,
+                                pos + Vec2::new(side * 55.0, 25.0),
+                                false,
+                            );
+                        }
+                    }
                     spawn_projectile(
-                        commands,
-                        art,
-                        pos + d * 28.0,
-                        d * 250.0,
-                        ProjectileOwner::Enemy,
-                        enemy.damage,
+                        commands, art,
+                        pos + dir * 28.0, dir * 180.0,
+                        ProjectileOwner::Enemy, enemy.damage,
                     );
+                } else if hp_percent > 0.33 {
+                    if enemy.ammo > 0 {
+                        enemy.ammo -= 1;
+                        spawn_enemy_kind(
+                            commands, art,
+                            EnemyKind::Scratcher, floor,
+                            pos + dir * 50.0,
+                            false,
+                        );
+                    }
+                    for a in [-0.2_f32, 0.2] {
+                        let d = rotate(dir, a);
+                        spawn_projectile(
+                            commands, art,
+                            pos + d * 28.0, d * 230.0,
+                            ProjectileOwner::Enemy, enemy.damage,
+                        );
+                    }
+                } else {
+                    for a in [-0.3_f32, 0.0, 0.3] {
+                        let d = rotate(dir, a);
+                        spawn_projectile(
+                            commands, art,
+                            pos + d * 28.0, d * 265.0,
+                            ProjectileOwner::Enemy, enemy.damage + 1,
+                        );
+                    }
                 }
-            } else if hp_percent > 0.33 {
-                // Phase 2 (33-66% HP): 3 projectiles, medium
-                for a in [-0.3_f32, 0.0, 0.3] {
-                    let d = rotate(dir, a);
-                    spawn_projectile(
-                        commands,
-                        art,
-                        pos + d * 28.0,
-                        d * 275.0,
-                        ProjectileOwner::Enemy,
-                        enemy.damage,
-                    );
-                }
-                enemy.action_cd = Timer::from_seconds(0.7, TimerMode::Once);
             } else {
-                // Phase 3 (0-33% HP): 5 projectiles, faster but not too aggressive
-                for a in [-0.4_f32, -0.2, 0.0, 0.2, 0.4] {
-                    let d = rotate(dir, a);
-                    spawn_projectile(
-                        commands,
-                        art,
-                        pos + d * 28.0,
-                        d * 300.0,
-                        ProjectileOwner::Enemy,
-                        enemy.damage + 1,
-                    );
+                // Dragon and any future bosses: escalating projectile spread
+                if hp_percent > 0.66 {
+                    for a in [-0.2_f32, 0.2] {
+                        let d = rotate(dir, a);
+                        spawn_projectile(
+                            commands, art,
+                            pos + d * 28.0, d * 250.0,
+                            ProjectileOwner::Enemy, enemy.damage,
+                        );
+                    }
+                } else if hp_percent > 0.33 {
+                    for a in [-0.3_f32, 0.0, 0.3] {
+                        let d = rotate(dir, a);
+                        spawn_projectile(
+                            commands, art,
+                            pos + d * 28.0, d * 275.0,
+                            ProjectileOwner::Enemy, enemy.damage,
+                        );
+                    }
+                } else {
+                    for a in [-0.4_f32, -0.2, 0.0, 0.2, 0.4] {
+                        let d = rotate(dir, a);
+                        spawn_projectile(
+                            commands, art,
+                            pos + d * 28.0, d * 300.0,
+                            ProjectileOwner::Enemy, enemy.damage + 1,
+                        );
+                    }
                 }
-                enemy.action_cd = Timer::from_seconds(0.5, TimerMode::Once);
             }
         }
         EnemyKind::Caster => {
@@ -173,7 +211,12 @@ pub fn perform_attack(
             enemy.charge_dir = dir;
             enemy.state_timer = Timer::from_seconds(0.6, TimerMode::Once);
         }
-        EnemyKind::ShadowCat => {}
+        EnemyKind::ShadowCat => {
+            if distance <= enemy_melee_reach(enemy.kind) + PLAYER_HURT_RADIUS && !invuln {
+                *player_hp -= enemy.damage;
+                shake.trauma = (shake.trauma + 0.35).min(1.0);
+            }
+        }
         // New enemy types - default melee attacks for now
         EnemyKind::NecromancerCat
         | EnemyKind::ShieldBearer

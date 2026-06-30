@@ -214,6 +214,7 @@ pub fn spawn_aoe_slash(
             dir: Vec2::X,
             life: Timer::from_seconds(0.22, TimerMode::Once),
             hit: HashSet::new(),
+            hit_obstacles: HashSet::new(),
             slash_style: SlashStyle::Standard,
             is_crit: false,
         },

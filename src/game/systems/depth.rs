@@ -2,7 +2,7 @@ use crate::game::assets::{GameArt, Sfx};
 use crate::game::components::*;
 use crate::game::progression::advance_room;
 use crate::game::spawning::{despawn_room, spawn_room};
-use crate::game::state::{Phase, RunState};
+use crate::game::state::{GameMode, GameState, Phase, RunState};
 use bevy::prelude::*;
 
 use super::combat::reset_hurt_invuln;
@@ -10,36 +10,48 @@ use super::player::play;
 
 const DEPTH_ARENA_HALF: f32 = 6.0;
 
-pub fn sync_dimension_view(
+/// Keep `GameMode` in sync with `run.current_room`. Fires at most once per mode change.
+pub fn sync_game_mode(
     run: Res<RunState>,
-    mut camera_2d: Query<&mut Camera, (With<Main2dCamera>, Without<DepthCamera>)>,
-    mut camera_3d: Query<&mut Camera, (With<DepthCamera>, Without<Main2dCamera>)>,
-    mut player_2d: Query<&mut Visibility, With<Player>>,
+    mode: Res<State<GameMode>>,
+    mut next_mode: ResMut<NextState<GameMode>>,
 ) {
-    let depth = run.current_room.is_depth();
-    for mut camera in &mut camera_2d {
-        camera.is_active = !depth;
-    }
-    for mut camera in &mut camera_3d {
-        camera.is_active = depth;
-    }
-    for mut visibility in &mut player_2d {
-        *visibility = if depth {
-            Visibility::Hidden
-        } else {
-            Visibility::Visible
-        };
+    let target = if run.current_room.is_depth() {
+        GameMode::Depth
+    } else {
+        GameMode::TwoD
+    };
+    if *mode.get() != target {
+        next_mode.set(target);
     }
 }
 
+/// Activate the 2-D camera and show the sprite-based player when entering TwoD mode.
+pub fn enter_2d_mode(
+    mut camera_2d: Query<&mut Camera, (With<Main2dCamera>, Without<DepthCamera>)>,
+    mut camera_3d: Query<&mut Camera, (With<DepthCamera>, Without<Main2dCamera>)>,
+    mut player_vis: Query<&mut Visibility, With<Player>>,
+) {
+    for mut cam in &mut camera_2d { cam.is_active = true; }
+    for mut cam in &mut camera_3d { cam.is_active = false; }
+    for mut vis in &mut player_vis { *vis = Visibility::Visible; }
+}
+
+/// Activate the 3-D camera and hide the sprite-based player when entering Depth mode.
+pub fn enter_depth_mode(
+    mut camera_2d: Query<&mut Camera, (With<Main2dCamera>, Without<DepthCamera>)>,
+    mut camera_3d: Query<&mut Camera, (With<DepthCamera>, Without<Main2dCamera>)>,
+    mut player_vis: Query<&mut Visibility, With<Player>>,
+) {
+    for mut cam in &mut camera_2d { cam.is_active = false; }
+    for mut cam in &mut camera_3d { cam.is_active = true; }
+    for mut vis in &mut player_vis { *vis = Visibility::Hidden; }
+}
+
 pub fn depth_camera_follow(
-    run: Res<RunState>,
     player: Query<&Transform, With<DepthPlayer>>,
     mut camera: Query<&mut Transform, (With<DepthCamera>, Without<DepthPlayer>)>,
 ) {
-    if !run.current_room.is_depth() {
-        return;
-    }
     let Ok(player_transform) = player.single() else {
         return;
     };
@@ -57,9 +69,6 @@ pub fn depth_player_movement(
     run: Res<RunState>,
     mut player: Query<(&mut Transform, &mut DepthPlayer)>,
 ) {
-    if !run.current_room.is_depth() || run.phase == Phase::GameOver {
-        return;
-    }
     let Ok((mut transform, mut depth_player)) = player.single_mut() else {
         return;
     };
@@ -93,16 +102,16 @@ pub fn depth_player_movement(
 pub fn depth_player_combat(
     mouse: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    depth_assets: Option<Res<DepthCombatAssets>>,
     mut run: ResMut<RunState>,
     sfx: Res<Sfx>,
     mut player: Query<(&Transform, &mut DepthPlayer)>,
     mut bosses: Query<(&mut DepthBoss, &Transform)>,
 ) {
-    if !run.current_room.is_depth() || run.phase != Phase::Fighting {
+    if run.phase != Phase::Fighting {
         return;
     }
+    let Some(depth_assets) = depth_assets else { return };
     let Ok((player_transform, mut depth_player)) = player.single_mut() else {
         return;
     };
@@ -133,8 +142,8 @@ pub fn depth_player_combat(
     let slash_pos = player_pos + facing * 0.75 + Vec3::Y * 0.15;
     let yaw = facing.z.atan2(facing.x);
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.6, 0.08, 0.35))),
-        MeshMaterial3d(materials.add(Color::srgb(1.0, 0.90, 0.40))),
+        Mesh3d(depth_assets.slash_mesh.clone()),
+        MeshMaterial3d(depth_assets.slash_material.clone()),
         Transform {
             translation: slash_pos,
             rotation: Quat::from_rotation_y(-yaw),
@@ -153,16 +162,17 @@ pub fn depth_player_combat(
 pub fn depth_boss_ai(
     time: Res<Time>,
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    depth_assets: Option<Res<DepthCombatAssets>>,
     mut run: ResMut<RunState>,
+    mut next_state: ResMut<NextState<GameState>>,
     sfx: Res<Sfx>,
     player: Query<&Transform, (With<DepthPlayer>, Without<DepthBoss>)>,
     mut bosses: Query<(&mut Transform, &mut DepthBoss), Without<DepthPlayer>>,
 ) {
-    if !run.current_room.is_depth() || run.phase != Phase::Fighting {
+    if run.phase != Phase::Fighting {
         return;
     }
+    let Some(depth_assets) = depth_assets else { return };
     let Ok(player_transform) = player.single() else {
         return;
     };
@@ -202,8 +212,8 @@ pub fn depth_boss_ai(
             for angle in spreads {
                 let shot_dir = rotate_xz(dir, *angle);
                 commands.spawn((
-                    Mesh3d(meshes.add(Cuboid::new(0.28, 0.28, 0.28))),
-                    MeshMaterial3d(materials.add(Color::srgb(1.0, 0.28, 0.34))),
+                    Mesh3d(depth_assets.projectile_mesh.clone()),
+                    MeshMaterial3d(depth_assets.projectile_material.clone()),
                     Transform::from_translation(transform.translation + shot_dir * 0.9),
                     DepthProjectile {
                         velocity: shot_dir * if boss.final_boss { 5.0 } else { 4.3 },
@@ -218,7 +228,7 @@ pub fn depth_boss_ai(
     }
 
     if run.player_hp == 0 {
-        run.phase = Phase::GameOver;
+        next_state.set(GameState::GameOver);
     }
 }
 
@@ -226,6 +236,7 @@ pub fn update_depth_projectiles(
     time: Res<Time>,
     mut commands: Commands,
     mut run: ResMut<RunState>,
+    mut next_state: ResMut<NextState<GameState>>,
     sfx: Res<Sfx>,
     player: Query<&Transform, (With<DepthPlayer>, Without<DepthProjectile>)>,
     mut projectiles: Query<(Entity, &mut Transform, &mut DepthProjectile), Without<DepthPlayer>>,
@@ -261,7 +272,7 @@ pub fn update_depth_projectiles(
                 reset_hurt_invuln(&mut run.invuln);
                 play(&mut commands, &sfx.hurt, 0.45);
                 if run.player_hp == 0 {
-                    run.phase = Phase::GameOver;
+                    next_state.set(GameState::GameOver);
                 }
             }
             commands.entity(entity).despawn();

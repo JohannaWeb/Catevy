@@ -1,7 +1,7 @@
 use crate::game::ability::AbilitySlot;
 use crate::game::assets::{GameArt, Sfx};
 use crate::game::components::*;
-use crate::game::state::{PersistentState, Phase, RunState};
+use crate::game::state::{GameState, PersistentState, RunState};
 use crate::game::sword::SWORDS;
 use bevy::audio::{AudioSource, PlaybackSettings, Volume};
 use bevy::prelude::*;
@@ -12,12 +12,13 @@ pub fn collect_pickups(
     mut commands: Commands,
     mut run: ResMut<RunState>,
     mut persistent: ResMut<PersistentState>,
+    game_state: Res<State<GameState>>,
     art: Res<GameArt>,
     sfx: Res<Sfx>,
     player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
     pickups: Query<(Entity, &Transform, &Pickup)>,
 ) {
-    if run.phase == Phase::GameOver {
+    if *game_state.get() == GameState::GameOver {
         return;
     }
 

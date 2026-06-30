@@ -55,7 +55,7 @@ pub fn update_slashes(
             let intensity = HitIntensity::from_damage(slash.damage, enemy.max_hp);
 
             // Apply intensity-scaled effects
-            hitstop.0 = intensity.hitstop_duration();
+            hitstop.0 = hitstop.0.max(intensity.hitstop_duration());
             shake.trauma = (shake.trauma + intensity.shake_trauma()).min(1.0);
 
             // Spawn impact particles

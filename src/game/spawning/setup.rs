@@ -73,10 +73,7 @@ pub fn spawn_floor(commands: &mut Commands, art: &GameArt, kind: RoomKind) {
         RoomKind::DepthTransition | RoomKind::DepthArena | RoomKind::DepthBoss => {
             Color::srgb(0.30, 0.24, 0.38)
         }
-        // New room types
         RoomKind::Shop => Color::srgb(0.70, 0.60, 0.75),
-        RoomKind::Challenge => Color::srgb(0.65, 0.55, 0.50),
-        RoomKind::Secret => Color::srgb(0.50, 0.65, 0.70),
     };
     commands.spawn((
         art.image_sprite(&art.floor, Vec2::new(1120.0, 640.0), tint),

@@ -1,6 +1,7 @@
 mod damage;
 mod death;
 mod melee;
+mod obstacles;
 mod ranged;
 
 pub use damage::{
@@ -10,4 +11,5 @@ pub use damage::{
 };
 pub use death::{resolve_enemy_deaths, update_explosions};
 pub use melee::update_slashes;
+pub use obstacles::{projectile_hit_obstacles, slash_hit_obstacles};
 pub use ranged::update_projectiles;

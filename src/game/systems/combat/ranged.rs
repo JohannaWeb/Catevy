@@ -1,6 +1,6 @@
 use crate::game::assets::{GameArt, Sfx};
 use crate::game::components::*;
-use crate::game::state::{Phase, RunState, ScreenShake};
+use crate::game::state::{GameState, RunState, ScreenShake};
 use crate::game::systems::effects::spawn_impact_particles;
 use bevy::prelude::*;
 
@@ -18,6 +18,7 @@ pub fn update_projectiles(
     mut run: ResMut<RunState>,
     mut shake: ResMut<ScreenShake>,
     mut hitstop: ResMut<HitStop>,
+    mut next_state: ResMut<NextState<GameState>>,
     art: Res<GameArt>,
     sfx: Res<Sfx>,
     obstacles: Query<(&Transform, &Obstacle), Without<Projectile>>,
@@ -123,7 +124,7 @@ pub fn update_projectiles(
                         );
                         hitstop.0 = hitstop.0.max(0.05);
                         if run.player_hp == 0 {
-                            run.phase = Phase::GameOver;
+                            next_state.set(GameState::GameOver);
                         }
                     }
                     commands.entity(entity).despawn();

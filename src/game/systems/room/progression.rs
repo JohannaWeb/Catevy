@@ -4,7 +4,7 @@ use crate::game::progression::advance_room;
 use crate::game::spawning::{
     despawn_room, spawn_door, spawn_gem_reward, spawn_room, spawn_sword_reward,
 };
-use crate::game::state::{PersistentState, Phase, RoomKind, RunState};
+use crate::game::state::{GameState, PersistentState, Phase, RoomKind, RunState};
 use crate::game::sword::SWORDS;
 use bevy::prelude::*;
 
@@ -79,30 +79,12 @@ pub fn door_interact(
     spawn_room(&mut commands, &art, &mut meshes, &mut materials, &mut run);
 }
 
-pub fn restart_run(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut commands: Commands,
-    mut run: ResMut<RunState>,
-    _persistent: Res<PersistentState>,
-    art: Res<GameArt>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    room_entities: Query<Entity, With<RoomEntity>>,
-    door_entities: Query<Entity, With<Door>>,
+pub fn meta_progression_save(
+    game_state: Res<State<GameState>>,
+    mut persistent: ResMut<PersistentState>,
+    run: Res<RunState>,
 ) {
-    if run.phase != Phase::GameOver || !keyboard.just_pressed(KeyCode::KeyR) { return; }
-
-    despawn_room(&mut commands, &room_entities);
-    for entity in &door_entities {
-        commands.entity(entity).despawn();
-    }
-
-    *run = RunState::default();
-    spawn_room(&mut commands, &art, &mut meshes, &mut materials, &mut run);
-}
-
-pub fn meta_progression_save(mut persistent: ResMut<PersistentState>, run: Res<RunState>) {
-    if run.phase != Phase::GameOver || !run.is_changed() { return; }
+    if *game_state.get() != GameState::GameOver || !run.is_changed() { return; }
 
     let earned = run.floor * 10 + run.room;
     persistent.currency += earned;
